@@ -1,0 +1,151 @@
+# M5Stack Tab5 VNC Client
+
+M5Stack Tab5用のVNCクライアント実装です。ArduinoVNCライブラリを使用して、Tab5をVNCビューワーとして動作させます。
+
+## 概要
+
+このプロジェクトは、M5Stack Tab5デバイスをVNC（Virtual Network Computing）クライアントとして使用するためのPlatformIO環境を提供します。Tab5の5インチタッチスクリーンディスプレイを活用し、リモートデスクトップの表示とタッチ操作による入力が可能です。
+
+## ハードウェア要件
+
+| 項目 | 仕様 |
+|------|------|
+| デバイス | M5Stack Tab5 |
+| メインMCU | ESP32-P4 (RISC-V Dual-core 400MHz) |
+| ワイヤレス | ESP32-C6 (Wi-Fi 6) |
+| ディスプレイ | 5インチ IPS TFT 1280×720 (MIPI-DSI) |
+| タッチ | GT911 マルチタッチコントローラ |
+| メモリ | 16MB Flash, 32MB PSRAM |
+
+## ソフトウェア要件
+
+| ソフトウェア | バージョン |
+|--------------|------------|
+| PlatformIO | 最新版 |
+| VS Code | 最新版（推奨） |
+
+## プロジェクト構成
+
+```
+m5stack_tab5_vnc/
+├── platformio.ini              # PlatformIO設定ファイル
+├── README.md                   # このファイル
+├── include/
+│   └── M5GFX_VNCDriver.h      # VNCドライバヘッダ
+└── src/
+    ├── main.cpp               # メインプログラム
+    └── M5GFX_VNCDriver.cpp    # VNCドライバ実装
+```
+
+## セットアップ手順
+
+### 1. PlatformIOのインストール
+
+VS Codeを使用している場合は、PlatformIO IDE拡張機能をインストールしてください。
+
+### 2. プロジェクトのクローン
+
+```bash
+git clone <repository-url>
+cd m5stack_tab5_vnc
+```
+
+### 3. 設定の変更
+
+`src/main.cpp`ファイルを開き、以下の設定を環境に合わせて変更してください。
+
+```cpp
+// Wi-Fi設定
+const char* WIFI_SSID = "your-ssid";           // Wi-Fiネットワーク名
+const char* WIFI_PASSWORD = "your-password";    // Wi-Fiパスワード
+
+// VNCサーバー設定
+const char* VNC_HOST = "192.168.1.100";        // VNCサーバーのIPアドレス
+const uint16_t VNC_PORT = 5900;                 // VNCポート（デフォルト: 5900）
+const char* VNC_PASSWORD = "your-vnc-password"; // VNCパスワード
+```
+
+### 4. ビルドとアップロード
+
+```bash
+# ビルド
+pio run
+
+# アップロード
+pio run --target upload
+
+# シリアルモニター
+pio device monitor
+```
+
+## 使用方法
+
+1. Tab5の電源を入れると、自動的にWi-Fiに接続を試みます
+2. Wi-Fi接続後、設定されたVNCサーバーへの接続を開始します
+3. 接続成功後、VNCサーバーのデスクトップが表示されます
+4. タッチスクリーンでマウス操作が可能です
+
+### タッチ操作
+
+| 操作 | 動作 |
+|------|------|
+| タップ | マウスクリック |
+| ドラッグ | マウスドラッグ |
+
+### ボタン操作
+
+| ボタン | 動作 |
+|--------|------|
+| 電源ボタン | 再接続を試行 |
+
+## トラブルシューティング
+
+### Wi-Fi接続に失敗する場合
+
+1. SSIDとパスワードが正しいか確認してください
+2. Tab5がWi-Fiルーターの範囲内にあることを確認してください
+3. 2.4GHz帯のWi-Fiを使用していることを確認してください
+
+### VNC接続に失敗する場合
+
+1. VNCサーバーが起動していることを確認してください
+2. VNCサーバーのIPアドレスとポートが正しいか確認してください
+3. VNCパスワードが正しいか確認してください
+4. ファイアウォールがVNCポート（通常5900）をブロックしていないか確認してください
+
+### 画面表示が遅い場合
+
+VNCサーバー側で以下の設定を試してください。
+
+1. 色深度を16ビットに下げる
+2. 圧縮レベルを上げる
+3. 解像度を下げる
+
+## 技術的な注意事項
+
+### ESP32-P4について
+
+M5Stack Tab5はESP32-P4をメインMCUとして使用しています。ESP32-P4はRISC-Vアーキテクチャを採用しており、従来のESP32（Xtensa）とは異なります。このプロジェクトでは、pioarduinoプラットフォームを使用してESP32-P4のArduinoサポートを実現しています。
+
+### Wi-Fi接続について
+
+Tab5ではESP32-C6がWi-Fiモジュールとして動作します。M5Unifiedライブラリがこの構成を抽象化しているため、通常のWiFiライブラリと同様に使用できます。
+
+## ライセンス
+
+このプロジェクトはGPL-2.0ライセンスの下で公開されています（ArduinoVNCライブラリのライセンスに準拠）。
+
+## 謝辞
+
+このプロジェクトは以下のライブラリを使用しています。
+
+- [ArduinoVNC](https://github.com/Links2004/arduinoVNC) by Links2004
+- [M5Unified](https://github.com/M5Stack/M5Unified) by M5Stack
+- [M5GFX](https://github.com/M5Stack/M5GFX) by M5Stack
+- [LovyanGFX](https://github.com/lovyan03/LovyanGFX) by lovyan03
+
+## 参考資料
+
+- [M5Stack Tab5 公式ドキュメント](https://docs.m5stack.com/en/core/Tab5)
+- [ArduinoVNC GitHub](https://github.com/Links2004/arduinoVNC)
+- [PlatformIO Documentation](https://docs.platformio.org/)
