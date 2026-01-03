@@ -33,7 +33,7 @@
 // Configuration - Modify these settings for your environment
 // ============================================================================
 
-//#define CREDENTIAL_SEPARATED  // to use the following defs, comment this line out
+#define CREDENTIAL_SEPARATED  // to use the following defs, comment this line out
 #ifdef CREDENTIAL_SEPARATED
 #  include "user_setting.h"
 #else
@@ -49,7 +49,7 @@
 
 // Display settings
 const uint8_t DISPLAY_BRIGHTNESS = 128;         // Display brightness (0-255)
-const uint8_t DISPLAY_ROTATION = 1;             // Display rotation (0-3)
+const uint8_t DISPLAY_ROTATION = 3;             // Display rotation (0-3)
 
 // ESP32-P4 Tab5 SDIO2 pins for WiFi (ESP32-C6)
 #define SDIO2_CLK GPIO_NUM_12
@@ -59,6 +59,10 @@ const uint8_t DISPLAY_ROTATION = 1;             // Display rotation (0-3)
 #define SDIO2_D2  GPIO_NUM_9
 #define SDIO2_D3  GPIO_NUM_8
 #define SDIO2_RST GPIO_NUM_15
+
+// CardKB
+constexpr uint8_t cardkb_addr = 0x5f;
+bool cardkb_available=false;
 
 // ============================================================================
 // Global variables
@@ -92,6 +96,10 @@ void handleTouch();
 void displayStatus(const String& title, const String& message, uint16_t color);
 String getVNCAddress();
 
+void setupCardKB();
+uint8_t cardkb_getch();
+uint32_t cardKBToKeysym(uint8_t cardKBCode);
+
 // ============================================================================
 // Setup
 // ============================================================================
@@ -123,6 +131,9 @@ void setup() {
     // Setup VNC client
     setupVNC();
     
+    // setup CardKB if available
+    setupCardKB();
+
     // Create VNC task on core 0 (core 1 is used for Arduino loop)
     xTaskCreatePinnedToCore(
         vncTask,           // Task function
@@ -154,6 +165,14 @@ void loop() {
         }
     }
     
+    uint8_t c;
+    if(c = cardkb_getch()) {
+        // 
+        uint32_t keysym = cardKBToKeysym(c);
+        vnc->keyEvent(keysym, 1);  // press
+        delay(50);  // 遅延
+        vnc->keyEvent(keysym, 0);  // release
+    }
     // Small delay to prevent watchdog issues
     delay(10);
 }
@@ -289,6 +308,75 @@ void setupVNC() {
     vnc->setPassword(VNC_PASSWORD);
     Serial.println("VNC client initialized");
 }
+
+// ===============================
+// CardKB
+// ================================
+
+uint32_t cardKBToKeysym(uint8_t cardKBCode) {
+    switch (cardKBCode) {
+        // 標準ASCII文字はそのまま返す（例: 'a' = 0x61）
+        case 0x20 ... 0x7E:  // スペースから~までの printable ASCII
+            return cardKBCode;
+
+        // 特殊キー: CardKBの値 → X11 keysym
+        case 0x0A:  // Line Feed (一部のEnter)
+        case 0x0D:  // Carriage Return (Enter)
+            return 0xff0d;  //XK_Return;  // 0xff0d
+
+        case 0x08:  // Backspace
+            return 0xff08; //XK_BackSpace;  // 0xff08
+
+        case 0x1B:  // Escape
+            return 0xff1b; //XK_Escape;  // 0xff1b
+
+        case 0x09:  // Tab
+            return 0xff09; //XK_Tab;  // 0xff09
+
+        // 矢印キー: CardKBの実際のコードに合わせて調整（ドキュメント確認: 例として仮定）
+        case 0x1C:  // Left arrow (仮: CardKBの値)
+            return 0xff51; // XK_Left;  // 0xff51
+        case 0x1D:  // Right arrow
+            return 0xff53; // XK_Right;  // 0xff53
+        case 0x1E:  // Up arrow
+            return 0xff52; // XK_Up;  // 0xff52
+        case 0x1F:  // Down arrow
+            return 0xff54; // XK_Down;  // 0xff54
+
+        // Delete
+        case 0x7F:  // DEL
+            return 0xffff; // XK_Delete;  // 0xffff
+
+        // Function keys (F1-F12): CardKBにない場合無視、またはカスタム
+        // 例: Fn + 1 = F1
+        // case 0xXX: return XK_F1;  // 0xffbe
+
+        // 未知のコード: 0を返すか、無視
+        default:
+            return 0;  // 無効
+    }
+}
+
+void setupCardKB() {
+    Wire.begin();
+    Wire.beginTransmission(cardkb_addr);
+    byte r = Wire.endTransmission();
+    if (r == 0) {
+        Serial.println("CardKB available");
+        cardkb_available=true;
+
+    }
+}
+
+uint8_t cardkb_getch(){
+    uint8_t r = 0;
+    Wire.requestFrom(cardkb_addr,1);
+    if(Wire.available()) {
+        r = Wire.read();
+    }
+    return r;
+}
+
 
 // ============================================================================
 // Touch handling
