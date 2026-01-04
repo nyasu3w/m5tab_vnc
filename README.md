@@ -4,6 +4,11 @@ Fixing and solving problems were made by a human, Grok and Copilot.
 
 Due to some incompatibilities, files from [arduinoVNC](https://github.com/Links2004/arduinoVNC) library are in lib directory to edit them.
 
+You can confirm the slow rendering on the X post.
+
+<blockquote class="twitter-tweet" data-media-max-width="560"><p lang="ja" dir="ltr">WindowsのUltraVNC対向で arduinoVNC on TAB5動いた。反応悪い＆速度遅い、けど動画送らないからこれでいい。<br>転送方式で圧縮入れたりなんだかんだするとメモリが無くてダメになるのでRAW <a href="https://t.co/xzx0dvk7Hj">pic.twitter.com/xzx0dvk7Hj</a></p>&mdash; nyasu3w (@nyasu3w2022) <a href="https://twitter.com/nyasu3w2022/status/2006906920167448619?ref_src=twsrc%5Etfw">January 2, 2026</a></blockquote> 
+
+
 The followings are the original readme by Manus.
 
 ---
