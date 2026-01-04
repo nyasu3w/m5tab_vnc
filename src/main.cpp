@@ -166,8 +166,9 @@ void loop() {
     }
     
     uint8_t c;
-    if(c = cardkb_getch()) {
+    if(cardkb_available && (c = cardkb_getch())) {
         // 
+        Serial.printf("CardKB[0x%x]:%c\n",c,c);
         uint32_t keysym = cardKBToKeysym(c);
         vnc->keyEvent(keysym, 1);  // press
         delay(50);  // 遅延
@@ -334,17 +335,17 @@ uint32_t cardKBToKeysym(uint8_t cardKBCode) {
             return 0xff09; //XK_Tab;  // 0xff09
 
         // 矢印キー: CardKBの実際のコードに合わせて調整（ドキュメント確認: 例として仮定）
-        case 0x1C:  // Left arrow (仮: CardKBの値)
+        case 0xb4:  // Left arrow (仮: CardKBの値)
             return 0xff51; // XK_Left;  // 0xff51
-        case 0x1D:  // Right arrow
+        case 0xb7:  // Right arrow
             return 0xff53; // XK_Right;  // 0xff53
-        case 0x1E:  // Up arrow
+        case 0xb5:  // Up arrow
             return 0xff52; // XK_Up;  // 0xff52
-        case 0x1F:  // Down arrow
+        case 0xb6:  // Down arrow
             return 0xff54; // XK_Down;  // 0xff54
 
         // Delete
-        case 0x7F:  // DEL
+        case 0xff:  // DEL
             return 0xffff; // XK_Delete;  // 0xffff
 
         // Function keys (F1-F12): CardKBにない場合無視、またはカスタム
