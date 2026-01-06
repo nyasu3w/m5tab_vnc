@@ -80,7 +80,9 @@ bool wasTouched = false;
 bool twoFingerScrollActive = false;
 int32_t scrollStartY = 0;
 int32_t lastScrollY = 0;
-const int32_t SCROLL_THRESHOLD = 30;  // Pixels to move before sending scroll event
+uint32_t lastScrollTime = 0;
+const int32_t SCROLL_THRESHOLD = 50;  // Pixels to move before sending scroll event
+const uint32_t SCROLL_MIN_INTERVAL = 100;  // Minimum ms between scroll events
 
 // Connection state
 bool wifiConnected = false;
@@ -673,27 +675,27 @@ void handleTouch() {
         } else {
             // Continue two-finger scroll
             int32_t deltaY = lastScrollY - touch.y;  // Inverted for natural scroll
+            uint32_t now = millis();
             
-            if (abs(deltaY) >= SCROLL_THRESHOLD) {
-                // Send scroll events
-                int scrollSteps = deltaY / SCROLL_THRESHOLD;
-                
-                for (int i = 0; i < abs(scrollSteps); i++) {
-                    if (scrollSteps > 0) {
-                        // Scroll up (wheel up)
-                        vnc->mouseEvent(touch.x, touch.y, 0b01000);
-                        delay(10);
-                        vnc->mouseEvent(touch.x, touch.y, 0b00000);
-                    } else {
-                        // Scroll down (wheel down)
-                        vnc->mouseEvent(touch.x, touch.y, 0b10000);
-                        delay(10);
-                        vnc->mouseEvent(touch.x, touch.y, 0b00000);
-                    }
+            // Rate limiting: only send scroll event if enough time has passed
+            if (abs(deltaY) >= SCROLL_THRESHOLD && (now - lastScrollTime) >= SCROLL_MIN_INTERVAL) {
+                // Send only ONE scroll event per threshold crossing
+                if (deltaY > 0) {
+                    // Scroll up (wheel up)
+                    vnc->mouseEvent(touch.x, touch.y, 0b01000);
+                    delay(50);  // Longer delay for stability
+                    vnc->mouseEvent(touch.x, touch.y, 0b00000);
+                    Serial.println("Scroll: UP");
+                } else {
+                    // Scroll down (wheel down)
+                    vnc->mouseEvent(touch.x, touch.y, 0b10000);
+                    delay(50);  // Longer delay for stability
+                    vnc->mouseEvent(touch.x, touch.y, 0b00000);
+                    Serial.println("Scroll: DOWN");
                 }
                 
                 lastScrollY = touch.y;
-                Serial.printf("Scroll: deltaY=%d, steps=%d\n", deltaY, scrollSteps);
+                lastScrollTime = now;
             }
         }
         return;
