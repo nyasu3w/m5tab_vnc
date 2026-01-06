@@ -426,8 +426,13 @@ void checkSwipeGesture() {
 void showInfoScreen() {
     Serial.println("Switching to connection info screen");
     
-    // Pause VNC drawing
+    // First pause VNC drawing to prevent interference
     pauseVNCScreen();
+    
+    // Small delay to ensure VNC drawing has stopped
+    delay(50);
+    
+    // Set flag after pausing to ensure VNC task sees it
     showingInfoScreen = true;
     
     // Display connection information
@@ -437,7 +442,14 @@ void showInfoScreen() {
 void showVNCScreen() {
     Serial.println("Switching to VNC screen");
     
+    // First, set flag to stop info screen display
     showingInfoScreen = false;
+    
+    // Clear the screen to remove info screen content
+    M5.Display.fillScreen(TFT_BLACK);
+    
+    // Small delay to ensure screen clear is complete
+    delay(50);
     
     // Resume VNC drawing
     resumeVNCScreen();
@@ -540,14 +552,19 @@ void pauseVNCScreen() {
 
 void resumeVNCScreen() {
     if (vncDisplay != nullptr) {
+        // First resume drawing capability
         vncDisplay->setPaused(false);
         vncScreenPaused = false;
         Serial.println("VNC screen resumed - drawing enabled");
         
         // Request full screen update from VNC server
         if (vnc != nullptr && vnc->connected()) {
+            // Force immediate full update
             vnc->forceFullUpdate();
             Serial.println("Requested full screen update from VNC server");
+            
+            // Give VNC a moment to start processing the update
+            delay(100);
         }
     }
 }
