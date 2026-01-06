@@ -76,6 +76,12 @@ int32_t lastTouchX = 0;
 int32_t lastTouchY = 0;
 bool wasTouched = false;
 
+// Two-finger scroll tracking
+bool twoFingerScrollActive = false;
+int32_t scrollStartY = 0;
+int32_t lastScrollY = 0;
+const int32_t SCROLL_THRESHOLD = 30;  // Pixels to move before sending scroll event
+
 // Connection state
 bool wifiConnected = false;
 bool vncConnected = false;
@@ -645,10 +651,62 @@ uint8_t cardkb_getch(){
 void handleTouch() {
     if (vnc == nullptr) return;
     
-    // Get touch state from M5Unified
+    // Get touch count and state
+    uint8_t touchCount = M5.Touch.getCount();
     auto touch = M5.Touch.getDetail();
     
-    if (touch.isPressed()) {
+    // Handle two-finger scroll
+    if (touchCount == 2) {
+        if (!twoFingerScrollActive) {
+            // Start two-finger scroll
+            twoFingerScrollActive = true;
+            scrollStartY = touch.y;
+            lastScrollY = touch.y;
+            
+            // Release any active single-touch drag
+            if (wasTouched) {
+                vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
+                wasTouched = false;
+            }
+            
+            Serial.println("Two-finger scroll started");
+        } else {
+            // Continue two-finger scroll
+            int32_t deltaY = lastScrollY - touch.y;  // Inverted for natural scroll
+            
+            if (abs(deltaY) >= SCROLL_THRESHOLD) {
+                // Send scroll events
+                int scrollSteps = deltaY / SCROLL_THRESHOLD;
+                
+                for (int i = 0; i < abs(scrollSteps); i++) {
+                    if (scrollSteps > 0) {
+                        // Scroll up (wheel up)
+                        vnc->mouseEvent(touch.x, touch.y, 0b01000);
+                        delay(10);
+                        vnc->mouseEvent(touch.x, touch.y, 0b00000);
+                    } else {
+                        // Scroll down (wheel down)
+                        vnc->mouseEvent(touch.x, touch.y, 0b10000);
+                        delay(10);
+                        vnc->mouseEvent(touch.x, touch.y, 0b00000);
+                    }
+                }
+                
+                lastScrollY = touch.y;
+                Serial.printf("Scroll: deltaY=%d, steps=%d\n", deltaY, scrollSteps);
+            }
+        }
+        return;
+    }
+    
+    // Reset two-finger scroll when not exactly 2 touches
+    if (twoFingerScrollActive) {
+        twoFingerScrollActive = false;
+        Serial.println("Two-finger scroll ended");
+    }
+    
+    // Handle single-touch (normal mouse operation)
+    if (touchCount == 1 && touch.isPressed()) {
         // Touch is active
         int32_t x = touch.x;
         int32_t y = touch.y;
