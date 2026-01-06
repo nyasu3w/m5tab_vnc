@@ -20,7 +20,7 @@
 
 #ifdef ESP32
 
-//#include "VNC_user_config.h"  // Must be included before VNC.h
+#include "VNC_user_config.h"  // Must be included before VNC.h
 #include "VNC_config.h"
 #include "VNC.h"
 #include <M5Unified.h>
@@ -32,6 +32,7 @@
  * 
  * This class implements the VNCdisplay interface using M5GFX library,
  * providing display rendering and touch input capabilities for VNC sessions.
+ * Supports pausing/resuming screen drawing while maintaining VNC connection.
  */
 class M5GFX_VNCDriver : public VNCdisplay {
 public:
@@ -124,6 +125,23 @@ public:
      */
     void vnc_options_override(dfb_vnc_options* opt) override;
 
+    // Screen control methods
+    
+    /**
+     * @brief Pause screen drawing while maintaining VNC connection
+     * @param paused true to pause drawing, false to resume
+     * 
+     * When paused, VNC communication continues but no drawing updates are applied.
+     * This allows displaying alternative screens while keeping the VNC session alive.
+     */
+    void setPaused(bool paused) { _isPaused = paused; }
+    
+    /**
+     * @brief Check if screen drawing is paused
+     * @return true if drawing is paused
+     */
+    bool isPaused() const { return _isPaused; }
+
     // Additional helper methods
     
     /**
@@ -148,6 +166,7 @@ public:
 
 private:
     M5GFX* _gfx;           ///< Pointer to M5GFX display object
+    bool _isPaused;         ///< Flag to pause/resume drawing
     uint32_t _updateX;      ///< Current update area X coordinate
     uint32_t _updateY;      ///< Current update area Y coordinate
     uint32_t _updateW;      ///< Current update area width

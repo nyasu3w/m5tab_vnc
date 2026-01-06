@@ -25,7 +25,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFi.h>
-//#include "VNC_user_config.h"  // Must be included before VNC.h
+#include "VNC_user_config.h"  // Must be included before VNC.h
 #include <VNC.h>
 #include "M5GFX_VNCDriver.h"
 
@@ -81,6 +81,9 @@ bool wasTouched = false;
 bool wifiConnected = false;
 bool vncConnected = false;
 
+// Screen state
+bool vncScreenPaused = false;
+
 // Task handles
 TaskHandle_t vncTaskHandle = nullptr;
 
@@ -95,6 +98,8 @@ void vncTask(void* pvParameters);
 void handleTouch();
 void displayStatus(const String& title, const String& message, uint16_t color);
 String getVNCAddress();
+void pauseVNCScreen();
+void resumeVNCScreen();
 
 void setupCardKB();
 uint8_t cardkb_getch();
@@ -106,6 +111,7 @@ uint32_t cardKBToKeysym(uint8_t cardKBCode);
 
 void setup() {
     // Set SDIO pins for ESP32-C6 WiFi module on Tab5
+    // MUST be called before M5.begin()
     WiFi.setPins(SDIO2_CLK, SDIO2_CMD, SDIO2_D0, SDIO2_D1, SDIO2_D2, SDIO2_D3, SDIO2_RST);
 
     // Initialize M5Stack Tab5
@@ -170,9 +176,11 @@ void loop() {
         // 
         Serial.printf("CardKB[0x%x]:%c\n",c,c);
         uint32_t keysym = cardKBToKeysym(c);
-        vnc->keyEvent(keysym, 1);  // press
-        delay(50);  // 遅延
-        vnc->keyEvent(keysym, 0);  // release
+        if (vnc != nullptr) {
+            vnc->keyEvent(keysym, 1);  // press
+            delay(50);  // 遅延
+            vnc->keyEvent(keysym, 0);  // release
+        }
     }
     // Small delay to prevent watchdog issues
     delay(10);
@@ -199,7 +207,8 @@ void vncTask(void* pvParameters) {
         
         wifiConnected = true;
         
-        // Run VNC loop
+        // Run VNC loop (always, even when screen is paused)
+        // This maintains the VNC connection
         if (vnc != nullptr) {
             vnc->loop();
             
@@ -209,8 +218,10 @@ void vncTask(void* pvParameters) {
                 vTaskDelay(pdMS_TO_TICKS(3000));
             } else {
                 vncConnected = true;
-                // Handle touch input when connected
-                handleTouch();
+                // Handle touch input when connected and screen is not paused
+                if (!vncScreenPaused) {
+                    handleTouch();
+                }
             }
         }
         
@@ -308,6 +319,32 @@ void setupVNC() {
     vnc->begin(VNC_HOST, VNC_PORT);
     vnc->setPassword(VNC_PASSWORD);
     Serial.println("VNC client initialized");
+}
+
+// ============================================================================
+// Screen control methods (for switching between VNC and other screens)
+// ============================================================================
+
+void pauseVNCScreen() {
+    if (vncDisplay != nullptr) {
+        vncDisplay->setPaused(true);
+        vncScreenPaused = true;
+        Serial.println("VNC screen paused - drawing disabled");
+    }
+}
+
+void resumeVNCScreen() {
+    if (vncDisplay != nullptr) {
+        vncDisplay->setPaused(false);
+        vncScreenPaused = false;
+        Serial.println("VNC screen resumed - drawing enabled");
+        
+        // Request full screen update from VNC server
+        if (vnc != nullptr && vnc->connected()) {
+            vnc->requestFullUpdate();
+            Serial.println("Requested full screen update from VNC server");
+        }
+    }
 }
 
 // ===============================
