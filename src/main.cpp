@@ -399,7 +399,7 @@ void displayConnectionInfo() {
     
     // Content area - adjusted starting position and spacing
     int y = 110;  // Start lower to avoid overlap with title
-    int lineHeight = 80;  // Reduced line height for better fit
+    int lineHeight = 90;  // Increased line height for better spacing
     
     M5.Display.setFont(&fonts::FreeSansBold12pt7b);  // Smaller font for labels
     M5.Display.setTextDatum(ML_DATUM);
@@ -409,7 +409,7 @@ void displayConnectionInfo() {
     M5.Display.drawString("WiFi Network", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);  // Smaller font for values
-    M5.Display.drawString(String(WIFI_SSID), 40, y + 35);
+    M5.Display.drawString(String(WIFI_SSID), 40, y + 40);
     
     y += lineHeight;
     
@@ -419,7 +419,7 @@ void displayConnectionInfo() {
     M5.Display.drawString("VNC Server", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);
-    M5.Display.drawString(String(VNC_HOST), 40, y + 35);
+    M5.Display.drawString(String(VNC_HOST), 40, y + 40);
     
     y += lineHeight;
     
@@ -429,7 +429,7 @@ void displayConnectionInfo() {
     M5.Display.drawString("Port", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);
-    M5.Display.drawString(String(VNC_PORT), 40, y + 35);
+    M5.Display.drawString(String(VNC_PORT), 40, y + 40);
     
     // Status indicators - adjusted position
     y += lineHeight + 20;
