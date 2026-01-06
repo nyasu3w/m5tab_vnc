@@ -434,6 +434,19 @@ void checkSwipeGesture() {
 void showInfoScreen() {
     Serial.println("Switching to connection info screen");
     
+    // Release any active mouse button to prevent unwanted selection
+    if (vnc != nullptr && wasTouched) {
+        vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);  // Release all buttons
+        wasTouched = false;
+        Serial.println("Released mouse button before switching to info screen");
+    }
+    
+    // Also reset two-finger scroll state
+    if (twoFingerScrollActive) {
+        twoFingerScrollActive = false;
+        Serial.println("Reset two-finger scroll state");
+    }
+    
     // First pause VNC drawing to prevent interference
     pauseVNCScreen();
     
