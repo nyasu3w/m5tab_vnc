@@ -20,7 +20,6 @@
 
 #ifdef ESP32
 
-#include "VNC_user_config.h"  // Must be included before VNC.h
 #include "VNC_config.h"
 #include "VNC.h"
 #include <M5Unified.h>

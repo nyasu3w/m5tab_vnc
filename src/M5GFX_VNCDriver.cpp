@@ -3,7 +3,6 @@
  * @brief VNC Display Driver implementation for M5Stack Tab5 using M5GFX
  */
 
-#include "VNC_user_config.h"  // Must be included before VNC.h
 #include "M5GFX_VNCDriver.h"
 
 #ifdef ESP32

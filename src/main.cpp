@@ -25,7 +25,6 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFi.h>
-#include "VNC_user_config.h"  // Must be included before VNC.h
 #include <VNC.h>
 #include "M5GFX_VNCDriver.h"
 
@@ -341,7 +340,7 @@ void resumeVNCScreen() {
         
         // Request full screen update from VNC server
         if (vnc != nullptr && vnc->connected()) {
-            vnc->requestFullUpdate();
+            vnc->forceFullUpdate();
             Serial.println("Requested full screen update from VNC server");
         }
     }
