@@ -88,6 +88,15 @@ bool showingInfoScreen = false;
 uint32_t lastThreeTouchTime = 0;
 const uint32_t THREE_TOUCH_DEBOUNCE = 500;  // 500ms debounce
 
+// Swipe down detection
+bool swipeInProgress = false;
+int32_t swipeStartY = 0;
+int32_t swipeStartX = 0;
+uint32_t swipeStartTime = 0;
+const int32_t SWIPE_TOP_THRESHOLD = 50;  // Top edge detection threshold
+const int32_t SWIPE_MIN_DISTANCE = 100;  // Minimum swipe distance
+const uint32_t SWIPE_MAX_TIME = 1000;    // Maximum swipe time (ms)
+
 // Task handles
 TaskHandle_t vncTaskHandle = nullptr;
 
@@ -101,6 +110,7 @@ void setupVNC();
 void vncTask(void* pvParameters);
 void handleTouch();
 void checkMultiTouch();
+void checkSwipeGesture();
 void displayStatus(const String& title, const String& message, uint16_t color);
 void displayConnectionInfo();
 void showVNCScreen();
@@ -172,6 +182,9 @@ void loop() {
     
     // Check for 3-finger touch to toggle screens
     checkMultiTouch();
+    
+    // Check for swipe down gesture from top edge
+    checkSwipeGesture();
     
     // Handle button press for reconnection
     if (M5.BtnA.wasPressed() || M5.BtnPWR.wasPressed()) {
@@ -356,6 +369,53 @@ void checkMultiTouch() {
                 showInfoScreen();
             }
         }
+    }
+}
+
+// ============================================================================
+// Swipe gesture detection for screen switching
+// ============================================================================
+
+void checkSwipeGesture() {
+    auto touch = M5.Touch.getDetail();
+    
+    // Only process single touch for swipe
+    if (M5.Touch.getCount() != 1) {
+        swipeInProgress = false;
+        return;
+    }
+    
+    if (touch.isPressed()) {
+        if (!swipeInProgress) {
+            // Check if touch started at top edge
+            if (touch.y <= SWIPE_TOP_THRESHOLD) {
+                swipeInProgress = true;
+                swipeStartX = touch.x;
+                swipeStartY = touch.y;
+                swipeStartTime = millis();
+                Serial.println("Swipe started at top edge");
+            }
+        } else {
+            // Track swipe progress
+            int32_t deltaY = touch.y - swipeStartY;
+            int32_t deltaX = abs(touch.x - swipeStartX);
+            uint32_t swipeTime = millis() - swipeStartTime;
+            
+            // Check if swipe is valid (downward, not too horizontal, within time limit)
+            if (deltaY >= SWIPE_MIN_DISTANCE && 
+                deltaX < SWIPE_MIN_DISTANCE && 
+                swipeTime < SWIPE_MAX_TIME) {
+                Serial.println("Swipe down detected - showing info screen");
+                showInfoScreen();
+                swipeInProgress = false;
+            } else if (swipeTime >= SWIPE_MAX_TIME) {
+                // Timeout - cancel swipe
+                swipeInProgress = false;
+            }
+        }
+    } else {
+        // Touch released
+        swipeInProgress = false;
     }
 }
 
