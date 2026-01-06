@@ -390,72 +390,72 @@ void showVNCScreen() {
 void displayConnectionInfo() {
     M5.Display.fillScreen(TFT_BLACK);
     
-    // Title bar
-    M5.Display.fillRect(0, 0, M5.Display.width(), 80, TFT_NAVY);
+    // Title bar - adjusted height and position
+    M5.Display.fillRect(0, 0, M5.Display.width(), 70, TFT_NAVY);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setTextDatum(MC_DATUM);
-    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
-    M5.Display.drawString("Connection Info", M5.Display.width() / 2, 40);
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);  // Smaller font for title
+    M5.Display.drawString("Connection Info", M5.Display.width() / 2, 35);
     
-    // Content area
-    int y = 140;
-    int lineHeight = 100;
+    // Content area - adjusted starting position and spacing
+    int y = 110;  // Start lower to avoid overlap with title
+    int lineHeight = 80;  // Reduced line height for better fit
     
-    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setFont(&fonts::FreeSansBold12pt7b);  // Smaller font for labels
     M5.Display.setTextDatum(ML_DATUM);
     
     // WiFi SSID
     M5.Display.setTextColor(TFT_CYAN);
-    M5.Display.drawString("WiFi Network", 60, y);
+    M5.Display.drawString("WiFi Network", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.drawString(String(WIFI_SSID), 60, y + 45);
+    M5.Display.setFont(&fonts::FreeSans12pt7b);  // Smaller font for values
+    M5.Display.drawString(String(WIFI_SSID), 40, y + 35);
     
     y += lineHeight;
     
     // VNC Server IP
-    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setFont(&fonts::FreeSansBold12pt7b);
     M5.Display.setTextColor(TFT_GREEN);
-    M5.Display.drawString("VNC Server", 60, y);
+    M5.Display.drawString("VNC Server", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.drawString(String(VNC_HOST), 60, y + 45);
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.drawString(String(VNC_HOST), 40, y + 35);
     
     y += lineHeight;
     
     // VNC Port
-    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setFont(&fonts::FreeSansBold12pt7b);
     M5.Display.setTextColor(TFT_YELLOW);
-    M5.Display.drawString("Port", 60, y);
+    M5.Display.drawString("Port", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
-    M5.Display.setFont(&fonts::FreeSans18pt7b);
-    M5.Display.drawString(String(VNC_PORT), 60, y + 45);
-    
-    // Status indicators
-    y += lineHeight + 40;
     M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.drawString(String(VNC_PORT), 40, y + 35);
+    
+    // Status indicators - adjusted position
+    y += lineHeight + 20;
+    M5.Display.setFont(&fonts::FreeSans9pt7b);  // Smaller font for status
     M5.Display.setTextDatum(MC_DATUM);
     
     // WiFi status
     if (wifiConnected) {
-        M5.Display.fillCircle(M5.Display.width() / 4, y, 15, TFT_GREEN);
+        M5.Display.fillCircle(M5.Display.width() / 4, y, 12, TFT_GREEN);
         M5.Display.setTextColor(TFT_GREEN);
-        M5.Display.drawString("WiFi OK", M5.Display.width() / 4, y + 35);
+        M5.Display.drawString("WiFi OK", M5.Display.width() / 4, y + 28);
     } else {
-        M5.Display.fillCircle(M5.Display.width() / 4, y, 15, TFT_RED);
+        M5.Display.fillCircle(M5.Display.width() / 4, y, 12, TFT_RED);
         M5.Display.setTextColor(TFT_RED);
-        M5.Display.drawString("WiFi Disconnected", M5.Display.width() / 4, y + 35);
+        M5.Display.drawString("WiFi Disconnected", M5.Display.width() / 4, y + 28);
     }
     
     // VNC status
     if (vncConnected) {
-        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 15, TFT_GREEN);
+        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 12, TFT_GREEN);
         M5.Display.setTextColor(TFT_GREEN);
-        M5.Display.drawString("VNC Connected", M5.Display.width() * 3 / 4, y + 35);
+        M5.Display.drawString("VNC Connected", M5.Display.width() * 3 / 4, y + 28);
     } else {
-        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 15, TFT_RED);
+        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 12, TFT_RED);
         M5.Display.setTextColor(TFT_RED);
-        M5.Display.drawString("VNC Disconnected", M5.Display.width() * 3 / 4, y + 35);
+        M5.Display.drawString("VNC Disconnected", M5.Display.width() * 3 / 4, y + 28);
     }
     
     // Footer instruction
