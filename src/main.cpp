@@ -82,6 +82,11 @@ bool vncConnected = false;
 
 // Screen state
 bool vncScreenPaused = false;
+bool showingInfoScreen = false;
+
+// Multi-touch detection
+uint32_t lastThreeTouchTime = 0;
+const uint32_t THREE_TOUCH_DEBOUNCE = 500;  // 500ms debounce
 
 // Task handles
 TaskHandle_t vncTaskHandle = nullptr;
@@ -95,7 +100,11 @@ void setupWiFi();
 void setupVNC();
 void vncTask(void* pvParameters);
 void handleTouch();
+void checkMultiTouch();
 void displayStatus(const String& title, const String& message, uint16_t color);
+void displayConnectionInfo();
+void showVNCScreen();
+void showInfoScreen();
 String getVNCAddress();
 void pauseVNCScreen();
 void resumeVNCScreen();
@@ -158,8 +167,11 @@ void setup() {
 // ============================================================================
 
 void loop() {
-    // Update M5 button states
+    // Update M5 button states and touch
     M5.update();
+    
+    // Check for 3-finger touch to toggle screens
+    checkMultiTouch();
     
     // Handle button press for reconnection
     if (M5.BtnA.wasPressed() || M5.BtnPWR.wasPressed()) {
@@ -213,12 +225,14 @@ void vncTask(void* pvParameters) {
             
             if (!vnc->connected()) {
                 vncConnected = false;
-                displayStatus("Connecting VNC", getVNCAddress(), TFT_GREEN);
+                if (!showingInfoScreen) {
+                    displayStatus("Connecting VNC", getVNCAddress(), TFT_GREEN);
+                }
                 vTaskDelay(pdMS_TO_TICKS(3000));
             } else {
                 vncConnected = true;
                 // Handle touch input when connected and screen is not paused
-                if (!vncScreenPaused) {
+                if (!vncScreenPaused && !showingInfoScreen) {
                     handleTouch();
                 }
             }
@@ -318,6 +332,138 @@ void setupVNC() {
     vnc->begin(VNC_HOST, VNC_PORT);
     vnc->setPassword(VNC_PASSWORD);
     Serial.println("VNC client initialized");
+}
+
+// ============================================================================
+// Multi-touch detection for screen switching
+// ============================================================================
+
+void checkMultiTouch() {
+    uint8_t touchCount = M5.Touch.getCount();
+    
+    // Detect 3-finger touch
+    if (touchCount >= 3) {
+        uint32_t now = millis();
+        
+        // Debounce: ignore rapid repeated touches
+        if (now - lastThreeTouchTime > THREE_TOUCH_DEBOUNCE) {
+            lastThreeTouchTime = now;
+            
+            // Toggle between VNC screen and info screen
+            if (showingInfoScreen) {
+                showVNCScreen();
+            } else {
+                showInfoScreen();
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Screen switching functions
+// ============================================================================
+
+void showInfoScreen() {
+    Serial.println("Switching to connection info screen");
+    
+    // Pause VNC drawing
+    pauseVNCScreen();
+    showingInfoScreen = true;
+    
+    // Display connection information
+    displayConnectionInfo();
+}
+
+void showVNCScreen() {
+    Serial.println("Switching to VNC screen");
+    
+    showingInfoScreen = false;
+    
+    // Resume VNC drawing
+    resumeVNCScreen();
+}
+
+// ============================================================================
+// Connection information display
+// ============================================================================
+
+void displayConnectionInfo() {
+    M5.Display.fillScreen(TFT_BLACK);
+    
+    // Title bar
+    M5.Display.fillRect(0, 0, M5.Display.width(), 80, TFT_NAVY);
+    M5.Display.setTextColor(TFT_WHITE);
+    M5.Display.setTextDatum(MC_DATUM);
+    M5.Display.setFont(&fonts::FreeSansBold24pt7b);
+    M5.Display.drawString("Connection Info", M5.Display.width() / 2, 40);
+    
+    // Content area
+    int y = 140;
+    int lineHeight = 100;
+    
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setTextDatum(ML_DATUM);
+    
+    // WiFi SSID
+    M5.Display.setTextColor(TFT_CYAN);
+    M5.Display.drawString("WiFi Network", 60, y);
+    M5.Display.setTextColor(TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawString(String(WIFI_SSID), 60, y + 45);
+    
+    y += lineHeight;
+    
+    // VNC Server IP
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setTextColor(TFT_GREEN);
+    M5.Display.drawString("VNC Server", 60, y);
+    M5.Display.setTextColor(TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawString(String(VNC_HOST), 60, y + 45);
+    
+    y += lineHeight;
+    
+    // VNC Port
+    M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+    M5.Display.setTextColor(TFT_YELLOW);
+    M5.Display.drawString("Port", 60, y);
+    M5.Display.setTextColor(TFT_WHITE);
+    M5.Display.setFont(&fonts::FreeSans18pt7b);
+    M5.Display.drawString(String(VNC_PORT), 60, y + 45);
+    
+    // Status indicators
+    y += lineHeight + 40;
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.setTextDatum(MC_DATUM);
+    
+    // WiFi status
+    if (wifiConnected) {
+        M5.Display.fillCircle(M5.Display.width() / 4, y, 15, TFT_GREEN);
+        M5.Display.setTextColor(TFT_GREEN);
+        M5.Display.drawString("WiFi OK", M5.Display.width() / 4, y + 35);
+    } else {
+        M5.Display.fillCircle(M5.Display.width() / 4, y, 15, TFT_RED);
+        M5.Display.setTextColor(TFT_RED);
+        M5.Display.drawString("WiFi Disconnected", M5.Display.width() / 4, y + 35);
+    }
+    
+    // VNC status
+    if (vncConnected) {
+        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 15, TFT_GREEN);
+        M5.Display.setTextColor(TFT_GREEN);
+        M5.Display.drawString("VNC Connected", M5.Display.width() * 3 / 4, y + 35);
+    } else {
+        M5.Display.fillCircle(M5.Display.width() * 3 / 4, y, 15, TFT_RED);
+        M5.Display.setTextColor(TFT_RED);
+        M5.Display.drawString("VNC Disconnected", M5.Display.width() * 3 / 4, y + 35);
+    }
+    
+    // Footer instruction
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.setTextColor(TFT_LIGHTGREY);
+    M5.Display.setTextDatum(MC_DATUM);
+    M5.Display.drawString("Touch with 3 fingers to return to VNC", 
+                          M5.Display.width() / 2, M5.Display.height() - 30);
 }
 
 // ============================================================================
