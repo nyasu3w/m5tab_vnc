@@ -390,9 +390,13 @@ void checkMultiTouch() {
 
 void checkSwipeGesture() {
     auto touch = M5.Touch.getDetail();
+    uint8_t touchCount = M5.Touch.getCount();
     
     // Only process single touch for swipe
-    if (M5.Touch.getCount() != 1) {
+    if (touchCount != 1) {
+        if (swipeInProgress) {
+            Serial.printf("[checkSwipeGesture] Swipe cancelled - touch count: %d\n", touchCount);
+        }
         swipeInProgress = false;
         return;
     }
@@ -405,7 +409,8 @@ void checkSwipeGesture() {
                 swipeStartX = touch.x;
                 swipeStartY = touch.y;
                 swipeStartTime = millis();
-                Serial.println("Swipe started at top edge");
+                Serial.printf("[checkSwipeGesture] Swipe STARTED at (%d, %d), wasTouched=%d\n", 
+                             swipeStartX, swipeStartY, wasTouched);
             }
         } else {
             // Track swipe progress
@@ -417,14 +422,22 @@ void checkSwipeGesture() {
             if (deltaY >= SWIPE_MIN_DISTANCE && 
                 deltaX < SWIPE_MIN_DISTANCE && 
                 swipeTime < SWIPE_MAX_TIME) {
-                Serial.println("Swipe down detected - showing info screen");
+                Serial.printf("[checkSwipeGesture] Swipe COMPLETED: deltaY=%d, deltaX=%d, time=%dms\n",
+                             deltaY, deltaX, swipeTime);
+                Serial.printf("[checkSwipeGesture] Current position: (%d, %d)\n", touch.x, touch.y);
+                Serial.printf("[checkSwipeGesture] wasTouched=%d, lastTouchX=%d, lastTouchY=%d\n",
+                             wasTouched, lastTouchX, lastTouchY);
                 
                 // Release mouse button before switching to info screen
                 // to prevent unwanted selection during swipe gesture
                 if (vnc != nullptr && wasTouched) {
+                    Serial.printf("[checkSwipeGesture] Releasing mouse button at (%d, %d)\n",
+                                 lastTouchX, lastTouchY);
                     vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
                     wasTouched = false;
-                    Serial.println("Released mouse button before swipe transition");
+                    Serial.println("[checkSwipeGesture] Mouse button RELEASED");
+                } else {
+                    Serial.printf("[checkSwipeGesture] No mouse release needed (wasTouched=%d)\n", wasTouched);
                 }
                 
                 showInfoScreen();
@@ -436,6 +449,9 @@ void checkSwipeGesture() {
         }
     } else {
         // Touch released
+        if (swipeInProgress) {
+            Serial.println("[checkSwipeGesture] Swipe cancelled - touch released");
+        }
         swipeInProgress = false;
     }
 }
@@ -445,13 +461,19 @@ void checkSwipeGesture() {
 // ============================================================================
 
 void showInfoScreen() {
-    Serial.println("Switching to connection info screen");
+    Serial.println("[showInfoScreen] ===== ENTERING INFO SCREEN =====");
+    Serial.printf("[showInfoScreen] wasTouched=%d, lastTouchX=%d, lastTouchY=%d\n",
+                 wasTouched, lastTouchX, lastTouchY);
     
     // Release any active mouse button to prevent unwanted selection
     if (vnc != nullptr && wasTouched) {
+        Serial.printf("[showInfoScreen] Releasing mouse button at (%d, %d)\n",
+                     lastTouchX, lastTouchY);
         vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);  // Release all buttons
         wasTouched = false;
-        Serial.println("Released mouse button before switching to info screen");
+        Serial.println("[showInfoScreen] Mouse button RELEASED");
+    } else {
+        Serial.printf("[showInfoScreen] No mouse release needed (wasTouched=%d)\n", wasTouched);
     }
     
     // Also reset two-finger scroll state
@@ -683,6 +705,13 @@ void handleTouch() {
     uint8_t touchCount = M5.Touch.getCount();
     auto touch = M5.Touch.getDetail();
     
+    // Debug: Log touch state
+    static uint8_t lastTouchCount = 0;
+    if (touchCount != lastTouchCount) {
+        Serial.printf("[handleTouch] Touch count changed: %d -> %d\n", lastTouchCount, touchCount);
+        lastTouchCount = touchCount;
+    }
+    
     // Handle two-finger scroll
     if (touchCount == 2) {
         if (!twoFingerScrollActive) {
@@ -744,6 +773,9 @@ void handleTouch() {
         
         if (!wasTouched || x != lastTouchX || y != lastTouchY) {
             // Send mouse move with button pressed
+            if (!wasTouched) {
+                Serial.printf("[handleTouch] Mouse button PRESSED at (%d, %d)\n", x, y);
+            }
             vnc->mouseEvent(x, y, 0b001);  // Left button pressed
             
             lastTouchX = x;
@@ -752,6 +784,7 @@ void handleTouch() {
         }
     } else if (wasTouched) {
         // Touch was released
+        Serial.printf("[handleTouch] Mouse button RELEASED at (%d, %d)\n", lastTouchX, lastTouchY);
         vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);  // No buttons pressed
         wasTouched = false;
     }
