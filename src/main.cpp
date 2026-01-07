@@ -370,11 +370,15 @@ void checkMultiTouch() {
         if (now - lastThreeTouchTime > THREE_TOUCH_DEBOUNCE) {
             lastThreeTouchTime = now;
             
-            // Toggle between VNC screen and info screen
             if (showingInfoScreen) {
+                // If on info screen, return to VNC screen
                 showVNCScreen();
             } else {
-                showInfoScreen();
+                // If on VNC screen, force full screen refresh
+                if (vnc != nullptr && vnc->connected()) {
+                    Serial.println("3-finger touch detected - forcing full screen update");
+                    vnc->forceFullUpdate();
+                }
             }
         }
     }
