@@ -418,6 +418,15 @@ void checkSwipeGesture() {
                 deltaX < SWIPE_MIN_DISTANCE && 
                 swipeTime < SWIPE_MAX_TIME) {
                 Serial.println("Swipe down detected - showing info screen");
+                
+                // Release mouse button before switching to info screen
+                // to prevent unwanted selection during swipe gesture
+                if (vnc != nullptr && wasTouched) {
+                    vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
+                    wasTouched = false;
+                    Serial.println("Released mouse button before swipe transition");
+                }
+                
                 showInfoScreen();
                 swipeInProgress = false;
             } else if (swipeTime >= SWIPE_MAX_TIME) {
