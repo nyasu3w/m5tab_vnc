@@ -98,6 +98,7 @@ const uint32_t THREE_TOUCH_DEBOUNCE = 500;  // 500ms debounce
 
 // Swipe down detection
 bool swipeInProgress = false;
+bool swipeJustCompleted = false;  // Flag to prevent handleTouch after swipe
 int32_t swipeStartY = 0;
 int32_t swipeStartX = 0;
 uint32_t swipeStartTime = 0;
@@ -440,6 +441,10 @@ void checkSwipeGesture() {
                     Serial.printf("[checkSwipeGesture] No mouse release needed (wasTouched=%d)\n", wasTouched);
                 }
                 
+                // Set flag to prevent handleTouch from re-triggering
+                swipeJustCompleted = true;
+                Serial.println("[checkSwipeGesture] Set swipeJustCompleted flag");
+                
                 showInfoScreen();
                 swipeInProgress = false;
             } else if (swipeTime >= SWIPE_MAX_TIME) {
@@ -704,6 +709,19 @@ void handleTouch() {
     // Get touch count and state
     uint8_t touchCount = M5.Touch.getCount();
     auto touch = M5.Touch.getDetail();
+    
+    // Skip handleTouch if swipe just completed
+    // This prevents re-triggering mouse events after swipe gesture
+    if (swipeJustCompleted) {
+        // Wait for touch to be released before resuming normal touch handling
+        if (touchCount == 0) {
+            swipeJustCompleted = false;
+            Serial.println("[handleTouch] Swipe completed flag cleared - resuming normal touch");
+        } else {
+            Serial.printf("[handleTouch] SKIPPED - swipe just completed (touchCount=%d)\n", touchCount);
+        }
+        return;
+    }
     
     // Debug: Log touch state
     static uint8_t lastTouchCount = 0;
