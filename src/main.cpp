@@ -91,6 +91,7 @@ bool vncConnected = false;
 // Screen state
 bool vncScreenPaused = false;
 bool showingInfoScreen = false;
+bool screenJustSwitched = false;  // Flag to prevent handleTouch after screen switch
 
 // Multi-touch detection
 uint32_t lastThreeTouchTime = 0;
@@ -98,7 +99,6 @@ const uint32_t THREE_TOUCH_DEBOUNCE = 500;  // 500ms debounce
 
 // Swipe down detection
 bool swipeInProgress = false;
-bool swipeJustCompleted = false;  // Flag to prevent handleTouch after swipe
 int32_t swipeStartY = 0;
 int32_t swipeStartX = 0;
 uint32_t swipeStartTime = 0;
@@ -373,6 +373,8 @@ void checkMultiTouch() {
             
             if (showingInfoScreen) {
                 // If on info screen, return to VNC screen
+                screenJustSwitched = true;
+                Serial.println("[checkMultiTouch] Set screenJustSwitched flag");
                 showVNCScreen();
             } else {
                 // If on VNC screen, force full screen refresh
@@ -442,8 +444,8 @@ void checkSwipeGesture() {
                 }
                 
                 // Set flag to prevent handleTouch from re-triggering
-                swipeJustCompleted = true;
-                Serial.println("[checkSwipeGesture] Set swipeJustCompleted flag");
+                screenJustSwitched = true;
+                Serial.println("[checkSwipeGesture] Set screenJustSwitched flag");
                 
                 showInfoScreen();
                 swipeInProgress = false;
@@ -710,15 +712,15 @@ void handleTouch() {
     uint8_t touchCount = M5.Touch.getCount();
     auto touch = M5.Touch.getDetail();
     
-    // Skip handleTouch if swipe just completed
-    // This prevents re-triggering mouse events after swipe gesture
-    if (swipeJustCompleted) {
+    // Skip handleTouch if screen just switched
+    // This prevents re-triggering mouse events after screen transitions
+    if (screenJustSwitched) {
         // Wait for touch to be released before resuming normal touch handling
         if (touchCount == 0) {
-            swipeJustCompleted = false;
-            Serial.println("[handleTouch] Swipe completed flag cleared - resuming normal touch");
+            screenJustSwitched = false;
+            Serial.println("[handleTouch] Screen switch flag cleared - resuming normal touch");
         } else {
-            Serial.printf("[handleTouch] SKIPPED - swipe just completed (touchCount=%d)\n", touchCount);
+            Serial.printf("[handleTouch] SKIPPED - screen just switched (touchCount=%d)\n", touchCount);
         }
         return;
     }
