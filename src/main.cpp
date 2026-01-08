@@ -92,6 +92,8 @@ bool vncConnected = false;
 bool vncScreenPaused = false;
 bool showingInfoScreen = false;
 bool screenJustSwitched = false;  // Flag to prevent handleTouch after screen switch
+uint32_t infoScreenStartTime = 0;  // Time when info screen was shown
+const uint32_t INFO_SCREEN_TIMEOUT = 5000;  // 5 seconds timeout (temporary for debugging)
 
 // Multi-touch detection
 uint32_t lastThreeTouchTime = 0;
@@ -194,6 +196,17 @@ void loop() {
     
     // Check for swipe down gesture from top edge
     checkSwipeGesture();
+    
+    // Check for info screen timeout (temporary for debugging)
+    if (showingInfoScreen && infoScreenStartTime > 0) {
+        uint32_t elapsed = millis() - infoScreenStartTime;
+        if (elapsed >= INFO_SCREEN_TIMEOUT) {
+            Serial.printf("[loop] Info screen timeout after %dms - returning to VNC\n", elapsed);
+            screenJustSwitched = true;  // Prevent handleTouch after auto-return
+            showVNCScreen();
+            infoScreenStartTime = 0;  // Reset timer
+        }
+    }
     
     // Handle button press for reconnection
     if (M5.BtnA.wasPressed() || M5.BtnPWR.wasPressed()) {
@@ -498,15 +511,23 @@ void showInfoScreen() {
     // Set flag after pausing to ensure VNC task sees it
     showingInfoScreen = true;
     
+    // Start timeout timer (temporary for debugging)
+    infoScreenStartTime = millis();
+    Serial.printf("[showInfoScreen] Started 5-second timeout timer\n");
+    
     // Display connection information
     displayConnectionInfo();
 }
 
 void showVNCScreen() {
-    Serial.println("Switching to VNC screen");
+    Serial.println("[showVNCScreen] ===== RETURNING TO VNC SCREEN =====");
     
     // First, set flag to stop info screen display
     showingInfoScreen = false;
+    
+    // Reset timeout timer
+    infoScreenStartTime = 0;
+    Serial.println("[showVNCScreen] Reset timeout timer");
     
     // Clear the screen to remove info screen content
     M5.Display.fillScreen(TFT_BLACK);
