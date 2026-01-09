@@ -97,16 +97,16 @@ bool screenJustSwitched = false;  // Flag to prevent handleTouch after screen sw
 uint32_t lastThreeTouchTime = 0;
 const uint32_t THREE_TOUCH_DEBOUNCE = 500;  // 500ms debounce
 
-// Swipe down detection
+// Swipe gesture detection
 bool swipeInProgress = false;
+bool swipePotential = false;  // Touch started at top, waiting for movement
 int32_t swipeStartY = 0;
 int32_t swipeStartX = 0;
 uint32_t swipeStartTime = 0;
 const int32_t SWIPE_TOP_THRESHOLD = 50;  // Top edge detection threshold
-const int32_t SWIPE_MIN_DISTANCE = 100;  // Minimum swipe distance
-const uint32_t SWIPE_MAX_TIME = 1000;    // Maximum swipe time (ms)
-
-// Task handles
+const int32_t SWIPE_START_DISTANCE = 20; // Minimum movement to start swipe mode
+const int32_t SWIPE_MIN_DISTANCE = 100;  // Minimum swipe distance to complete
+const uint32_t SWIPE_MAX_TIME = 1000;    // Maximum swipe time (ms)/ Task handles
 TaskHandle_t vncTaskHandle = nullptr;
 
 // ============================================================================
@@ -396,30 +396,47 @@ void checkSwipeGesture() {
     
     // Only process single touch for swipe
     if (touchCount != 1) {
-        if (swipeInProgress) {
+        if (swipeInProgress || swipePotential) {
             Serial.printf("[checkSwipeGesture] Swipe cancelled - touch count: %d\n", touchCount);
         }
         swipeInProgress = false;
+        swipePotential = false;
         return;
     }
     
     if (touch.isPressed()) {
-        if (!swipeInProgress) {
+        if (!swipePotential && !swipeInProgress) {
             // Check if touch started at top edge
             if (touch.y <= SWIPE_TOP_THRESHOLD) {
-                swipeInProgress = true;
+                // Mark as potential swipe, but don't block normal touch yet
+                swipePotential = true;
                 swipeStartX = touch.x;
                 swipeStartY = touch.y;
                 swipeStartTime = millis();
-                Serial.println("[checkSwipeGesture] Swipe started");
+                Serial.println("[checkSwipeGesture] Potential swipe detected at top edge");
+            }
+        } else if (swipePotential && !swipeInProgress) {
+            // Check if finger moved down enough to confirm swipe intent
+            int32_t deltaY = touch.y - swipeStartY;
+            int32_t deltaX = abs(touch.x - swipeStartX);
+            
+            if (deltaY >= SWIPE_START_DISTANCE && deltaX < SWIPE_START_DISTANCE) {
+                // Confirmed as swipe - enter swipe mode
+                swipeInProgress = true;
+                swipePotential = false;
+                Serial.println("[checkSwipeGesture] Swipe mode activated");
                 
-                // Immediately release mouse button to prevent drag during swipe
+                // Release mouse button to prevent drag during swipe
                 if (vnc != nullptr && wasTouched) {
                     vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
                     wasTouched = false;
                 }
+            } else if (millis() - swipeStartTime > SWIPE_MAX_TIME) {
+                // Timeout - not a swipe, allow normal touch
+                swipePotential = false;
+                Serial.println("[checkSwipeGesture] Potential swipe timeout - allowing normal touch");
             }
-        } else {
+        } else if (swipeInProgress) {
             // Track swipe progress
             int32_t deltaY = touch.y - swipeStartY;
             int32_t deltaX = abs(touch.x - swipeStartX);
@@ -447,7 +464,11 @@ void checkSwipeGesture() {
         if (swipeInProgress) {
             Serial.println("[checkSwipeGesture] Swipe cancelled - touch released");
         }
+        if (swipePotential) {
+            Serial.println("[checkSwipeGesture] Potential swipe cancelled - touch released");
+        }
         swipeInProgress = false;
+        swipePotential = false;
     }
 }
 
