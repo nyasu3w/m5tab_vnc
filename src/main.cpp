@@ -427,6 +427,15 @@ void checkSwipeGesture() {
                 swipeStartTime = millis();
                 Serial.printf("[checkSwipeGesture] Swipe STARTED at (%d, %d), wasTouched=%d\n", 
                              swipeStartX, swipeStartY, wasTouched);
+                
+                // Immediately release mouse button to prevent drag during swipe
+                if (vnc != nullptr && wasTouched) {
+                    Serial.printf("[checkSwipeGesture] Immediately releasing mouse button at (%d, %d)\n",
+                                 lastTouchX, lastTouchY);
+                    vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
+                    wasTouched = false;
+                    Serial.println("[checkSwipeGesture] Mouse button RELEASED at swipe start");
+                }
             }
         } else {
             // Track swipe progress
@@ -444,18 +453,7 @@ void checkSwipeGesture() {
                 Serial.printf("[checkSwipeGesture] wasTouched=%d, lastTouchX=%d, lastTouchY=%d\n",
                              wasTouched, lastTouchX, lastTouchY);
                 
-                // Release mouse button before switching to info screen
-                // to prevent unwanted selection during swipe gesture
-                if (vnc != nullptr && wasTouched) {
-                    Serial.printf("[checkSwipeGesture] Releasing mouse button at (%d, %d)\n",
-                                 lastTouchX, lastTouchY);
-                    vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
-                    wasTouched = false;
-                    Serial.println("[checkSwipeGesture] Mouse button RELEASED");
-                } else {
-                    Serial.printf("[checkSwipeGesture] No mouse release needed (wasTouched=%d)\n", wasTouched);
-                }
-                
+                // Mouse button already released at swipe start
                 // Set flag to prevent handleTouch from re-triggering
                 screenJustSwitched = true;
                 Serial.println("[checkSwipeGesture] Set screenJustSwitched flag");
@@ -733,10 +731,15 @@ void handleTouch() {
     uint8_t touchCount = M5.Touch.getCount();
     auto touch = M5.Touch.getDetail();
     
-    // Skip handleTouch if screen just switched
+    //    // Skip touch handling during swipe gesture
+    if (swipeInProgress) {
+        Serial.println("[handleTouch] SKIPPED - swipe in progress");
+        return;
+    }
+    
+    // Check screenJustSwitched flag first
     // This prevents re-triggering mouse events after screen transitions
-    if (screenJustSwitched) {
-        // Wait for touch to be released before resuming normal touch handling
+    if (screenJustSwitched) {        // Wait for touch to be released before resuming normal touch handling
         if (touchCount == 0) {
             screenJustSwitched = false;
             Serial.println("[handleTouch] Screen switch flag cleared - resuming normal touch");
