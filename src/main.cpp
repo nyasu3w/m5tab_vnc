@@ -92,8 +92,6 @@ bool vncConnected = false;
 bool vncScreenPaused = false;
 bool showingInfoScreen = false;
 bool screenJustSwitched = false;  // Flag to prevent handleTouch after screen switch
-uint32_t infoScreenStartTime = 0;  // Time when info screen was shown
-const uint32_t INFO_SCREEN_TIMEOUT = 5000;  // 5 seconds timeout (temporary for debugging)
 
 // Multi-touch detection
 uint32_t lastThreeTouchTime = 0;
@@ -196,17 +194,6 @@ void loop() {
     
     // Check for swipe down gesture from top edge
     checkSwipeGesture();
-    
-    // Check for info screen timeout (temporary for debugging)
-    if (showingInfoScreen && infoScreenStartTime > 0) {
-        uint32_t elapsed = millis() - infoScreenStartTime;
-        if (elapsed >= INFO_SCREEN_TIMEOUT) {
-            Serial.printf("[loop] Info screen timeout after %dms - returning to VNC\n", elapsed);
-            screenJustSwitched = true;  // Prevent handleTouch after auto-return
-            showVNCScreen();
-            infoScreenStartTime = 0;  // Reset timer
-        }
-    }
     
     // Handle button press for reconnection
     if (M5.BtnA.wasPressed() || M5.BtnPWR.wasPressed()) {
@@ -387,12 +374,11 @@ void checkMultiTouch() {
             if (showingInfoScreen) {
                 // If on info screen, return to VNC screen
                 screenJustSwitched = true;
-                Serial.println("[checkMultiTouch] Set screenJustSwitched flag");
                 showVNCScreen();
             } else {
                 // If on VNC screen, force full screen refresh
                 if (vnc != nullptr && vnc->connected()) {
-                    Serial.println("3-finger touch detected - forcing full screen update");
+                    Serial.println("[checkMultiTouch] Forcing full screen refresh");
                     vnc->forceFullUpdate();
                 }
             }
@@ -425,16 +411,12 @@ void checkSwipeGesture() {
                 swipeStartX = touch.x;
                 swipeStartY = touch.y;
                 swipeStartTime = millis();
-                Serial.printf("[checkSwipeGesture] Swipe STARTED at (%d, %d), wasTouched=%d\n", 
-                             swipeStartX, swipeStartY, wasTouched);
+                Serial.println("[checkSwipeGesture] Swipe started");
                 
                 // Immediately release mouse button to prevent drag during swipe
                 if (vnc != nullptr && wasTouched) {
-                    Serial.printf("[checkSwipeGesture] Immediately releasing mouse button at (%d, %d)\n",
-                                 lastTouchX, lastTouchY);
                     vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);
                     wasTouched = false;
-                    Serial.println("[checkSwipeGesture] Mouse button RELEASED at swipe start");
                 }
             }
         } else {
@@ -447,16 +429,11 @@ void checkSwipeGesture() {
             if (deltaY >= SWIPE_MIN_DISTANCE && 
                 deltaX < SWIPE_MIN_DISTANCE && 
                 swipeTime < SWIPE_MAX_TIME) {
-                Serial.printf("[checkSwipeGesture] Swipe COMPLETED: deltaY=%d, deltaX=%d, time=%dms\n",
-                             deltaY, deltaX, swipeTime);
-                Serial.printf("[checkSwipeGesture] Current position: (%d, %d)\n", touch.x, touch.y);
-                Serial.printf("[checkSwipeGesture] wasTouched=%d, lastTouchX=%d, lastTouchY=%d\n",
-                             wasTouched, lastTouchX, lastTouchY);
+                Serial.println("[checkSwipeGesture] Swipe completed");
                 
                 // Mouse button already released at swipe start
                 // Set flag to prevent handleTouch from re-triggering
                 screenJustSwitched = true;
-                Serial.println("[checkSwipeGesture] Set screenJustSwitched flag");
                 
                 showInfoScreen();
                 swipeInProgress = false;
@@ -479,25 +456,17 @@ void checkSwipeGesture() {
 // ============================================================================
 
 void showInfoScreen() {
-    Serial.println("[showInfoScreen] ===== ENTERING INFO SCREEN =====");
-    Serial.printf("[showInfoScreen] wasTouched=%d, lastTouchX=%d, lastTouchY=%d\n",
-                 wasTouched, lastTouchX, lastTouchY);
+    Serial.println("[showInfoScreen] Entering info screen");
     
     // Release any active mouse button to prevent unwanted selection
     if (vnc != nullptr && wasTouched) {
-        Serial.printf("[showInfoScreen] Releasing mouse button at (%d, %d)\n",
-                     lastTouchX, lastTouchY);
         vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);  // Release all buttons
         wasTouched = false;
-        Serial.println("[showInfoScreen] Mouse button RELEASED");
-    } else {
-        Serial.printf("[showInfoScreen] No mouse release needed (wasTouched=%d)\n", wasTouched);
     }
     
     // Also reset two-finger scroll state
     if (twoFingerScrollActive) {
         twoFingerScrollActive = false;
-        Serial.println("Reset two-finger scroll state");
     }
     
     // First pause VNC drawing to prevent interference
@@ -509,23 +478,15 @@ void showInfoScreen() {
     // Set flag after pausing to ensure VNC task sees it
     showingInfoScreen = true;
     
-    // Start timeout timer (temporary for debugging)
-    infoScreenStartTime = millis();
-    Serial.printf("[showInfoScreen] Started 5-second timeout timer\n");
-    
     // Display connection information
     displayConnectionInfo();
 }
 
 void showVNCScreen() {
-    Serial.println("[showVNCScreen] ===== RETURNING TO VNC SCREEN =====");
+    Serial.println("[showVNCScreen] Returning to VNC screen");
     
     // First, set flag to stop info screen display
     showingInfoScreen = false;
-    
-    // Reset timeout timer
-    infoScreenStartTime = 0;
-    Serial.println("[showVNCScreen] Reset timeout timer");
     
     // Clear the screen to remove info screen content
     M5.Display.fillScreen(TFT_BLACK);
@@ -749,12 +710,7 @@ void handleTouch() {
         return;
     }
     
-    // Debug: Log touch state
-    static uint8_t lastTouchCount = 0;
-    if (touchCount != lastTouchCount) {
-        Serial.printf("[handleTouch] Touch count changed: %d -> %d\n", lastTouchCount, touchCount);
-        lastTouchCount = touchCount;
-    }
+    // (Touch count logging removed for cleaner output)
     
     // Handle two-finger scroll
     if (touchCount == 2) {
@@ -817,9 +773,6 @@ void handleTouch() {
         
         if (!wasTouched || x != lastTouchX || y != lastTouchY) {
             // Send mouse move with button pressed
-            if (!wasTouched) {
-                Serial.printf("[handleTouch] Mouse button PRESSED at (%d, %d)\n", x, y);
-            }
             vnc->mouseEvent(x, y, 0b001);  // Left button pressed
             
             lastTouchX = x;
@@ -828,7 +781,6 @@ void handleTouch() {
         }
     } else if (wasTouched) {
         // Touch was released
-        Serial.printf("[handleTouch] Mouse button RELEASED at (%d, %d)\n", lastTouchX, lastTouchY);
         vnc->mouseEvent(lastTouchX, lastTouchY, 0b000);  // No buttons pressed
         wasTouched = false;
     }
