@@ -27,23 +27,18 @@
 #include <WiFi.h>
 #include <VNC.h>
 #include "M5GFX_VNCDriver.h"
+#include "ConnectionProfile.h"
+#include "ProfileStore.h"
+#include "ProfileUI.h"
+#include <atomic>
 
 // ============================================================================
-// Configuration - Modify these settings for your environment
+// Optional legacy credentials - imported once, never required for the build
 // ============================================================================
 
-#define CREDENTIAL_SEPARATED  // to use the following defs, comment this line out
-#ifdef CREDENTIAL_SEPARATED
-#  include "user_setting.h"
-#else
-  // Wi-Fi credentials
-  const char* WIFI_SSID = "your-ssid";           // Your Wi-Fi network name
-  const char* WIFI_PASSWORD = "your-password";    // Your Wi-Fi password
-
-  // VNC server settings
-  const char* VNC_HOST = "192.168.1.100";        // VNC server IP address
-  const uint16_t VNC_PORT = 5900;                 // VNC server port (default: 5900)
-  const char* VNC_PASSWORD = "the_password"; // VNC server password
+#if __has_include("user_setting.h")
+#include "user_setting.h"
+#define HAS_LEGACY_CONNECTION_CONFIG 1
 #endif
 
 // Display settings
@@ -70,6 +65,12 @@ bool cardkb_available=false;
 // VNC display driver and client - using pointers to control initialization timing
 M5GFX_VNCDriver* vncDisplay = nullptr;
 arduinoVNC* vnc = nullptr;
+
+// Selected once before the network task starts; never edited during a session.
+ProfileStore profileStore;
+ConnectionProfile activeProfile;
+uint8_t activeProfileSlot = 0;
+std::atomic<bool> profileConnectedPending{false};
 
 // Touch state tracking
 int32_t lastTouchX = 0;
@@ -114,8 +115,9 @@ TaskHandle_t vncTaskHandle = nullptr;
 // ============================================================================
 
 void setupDisplay();
-void setupWiFi();
+bool setupWiFi();
 void setupVNC();
+void loadConnectionProfiles();
 void vncTask(void* pvParameters);
 void handleTouch();
 void checkMultiTouch();
@@ -158,14 +160,32 @@ void setup() {
     // Setup display
     setupDisplay();
     
-    // Setup Wi-Fi connection
-    setupWiFi();
+    // CardKB is a local configuration keyboard until the VNC task starts.
+    setupCardKB();
+    loadConnectionProfiles();
+    do {
+        while (!selectConnectionProfile(profileStore, activeProfile, activeProfileSlot,
+                                        cardkb_available ? cardkb_getch : nullptr)) {
+            delay(10);
+        }
+        Serial.printf("[Profiles] Connecting profile slot %u\n", activeProfileSlot + 1);
+    } while (!setupWiFi());
     
     // Setup VNC client
     setupVNC();
-    
-    // setup CardKB if available
-    setupCardKB();
+
+    // Never let the Connect button touch become a remote mouse press.
+    M5.update();
+    while (M5.Touch.getCount() != 0) {
+        delay(10);
+        M5.update();
+    }
+    if (cardkb_available) {
+        for (int i = 0; i < 32 && cardkb_getch() != 0; ++i) {
+            delay(1);
+        }
+    }
+    screenJustSwitched = true;
 
     // Create VNC task on core 0 (core 1 is used for Arduino loop)
     xTaskCreatePinnedToCore(
@@ -188,6 +208,14 @@ void setup() {
 void loop() {
     // Update M5 button states and touch
     M5.update();
+
+    // Only this core writes preferences after startup. The network task merely
+    // notifies us after a successful VNC handshake, using an atomic handoff.
+    if (profileConnectedPending.exchange(false)) {
+        if (!profileStore.markLastUsed(activeProfileSlot)) {
+            Serial.println("[Profiles] Could not save last successful profile");
+        }
+    }
     
     // Check for 3-finger touch to toggle screens
     checkMultiTouch();
@@ -225,6 +253,7 @@ void loop() {
 
 void vncTask(void* pvParameters) {
     Serial.println("VNC task started on core " + String(xPortGetCoreID()));
+    bool profileSuccessNotified = false;
     
     while (true) {
         // Check Wi-Fi connection
@@ -253,6 +282,11 @@ void vncTask(void* pvParameters) {
                 vTaskDelay(pdMS_TO_TICKS(3000));
             } else {
                 vncConnected = true;
+                if (!profileSuccessNotified) {
+                    profileSuccessNotified = true;
+                    profileConnectedPending.store(true);
+                    Serial.println("[Profiles] VNC connected successfully");
+                }
                 // Handle touch input when connected and screen is not paused
                 if (!vncScreenPaused && !showingInfoScreen) {
                     handleTouch();
@@ -296,45 +330,165 @@ void setupDisplay() {
 // Wi-Fi setup
 // ============================================================================
 
-void setupWiFi() {
-    Serial.println("Connecting to Wi-Fi...");
-    Serial.println("SSID: " + String(WIFI_SSID));
-    
-    displayStatus("Connecting WiFi", String(WIFI_SSID), TFT_YELLOW);
-    
-    // Set Wi-Fi mode to station
-    WiFi.mode(WIFI_STA);
-    
-   
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    // Wait for connection with timeout
-    int attempts = 0;
-    const int maxAttempts = 30;
-    
-    while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
-        delay(500);
-        Serial.print(".");
-        if (vncDisplay != nullptr) {
-            vncDisplay->print(".");
-        }
-        attempts++;
+void loadConnectionProfiles() {
+    if (!profileStore.load()) {
+        Serial.println("[Profiles] Some settings could not be loaded; check the selection screen");
     }
-    
-    Serial.println();
-    
-    if (WiFi.status() == WL_CONNECTED) {
-        wifiConnected = true;
-        Serial.println("WiFi connected!");
-        Serial.println("IP address: " + WiFi.localIP().toString());
-        Serial.println("Signal strength: " + String(WiFi.RSSI()) + " dBm");
-        
-        displayStatus("WiFi Connected", WiFi.localIP().toString(), TFT_GREEN);
-        delay(1500);
+    if (!profileStore.available() || profileStore.initialized() ||
+        profileStore.corruptCount() != 0) {
+        return;
+    }
+
+#ifdef HAS_LEGACY_CONNECTION_CONFIG
+    ConnectionProfile legacy;
+    auto copyField = [](char* destination, size_t capacity, const char* source) {
+        if (source == nullptr || strlen(source) >= capacity) return false;
+        memcpy(destination, source, strlen(source) + 1);
+        return true;
+    };
+    strcpy(legacy.name, "Imported settings");
+    legacy.vncPort = VNC_PORT;
+    bool fits = copyField(legacy.ssid, sizeof(legacy.ssid), WIFI_SSID) &&
+                copyField(legacy.wifiPassword, sizeof(legacy.wifiPassword), WIFI_PASSWORD) &&
+                copyField(legacy.vncHost, sizeof(legacy.vncHost), VNC_HOST) &&
+                copyField(legacy.vncPassword, sizeof(legacy.vncPassword), VNC_PASSWORD) &&
+                VNC_PORT > 0 && static_cast<uint32_t>(VNC_PORT) <= UINT16_MAX;
+    char error[128];
+    if (fits && validateConnectionProfile(legacy, error, sizeof(error))) {
+        int slot = profileStore.findFreeSlot();
+        if (slot >= 0 && !profileStore.save(static_cast<uint8_t>(slot), legacy)) {
+            Serial.println("[Profiles] Legacy import could not be saved; create a profile on screen");
+            return;
+        }
+        Serial.println("[Profiles] Imported legacy settings (credentials not logged)");
     } else {
-        Serial.println("WiFi connection failed!");
-        displayStatus("WiFi Failed", "Check credentials", TFT_RED);
-        delay(3000);
+        Serial.println("[Profiles] Legacy settings are invalid or too long; create a profile on screen");
+    }
+#endif
+    if (!profileStore.markInitialized()) {
+        Serial.println("[Profiles] Could not save initialization state");
+    }
+}
+
+bool setupWiFi() {
+    // This entire UI runs before vncTask exists, so no display/network owner
+    // can race with a Cancel, Retry or profile edit operation.
+    const int buttonY = M5.Display.height() - 100;
+    const int buttonWidth = 280;
+    const int buttonHeight = 60;
+    const int chooseX = M5.Display.width() / 2 + 20;
+    const int retryX = M5.Display.width() / 2 - buttonWidth - 20;
+    auto drawButton = [&](int x, const char* text) {
+        M5.Display.fillRoundRect(x, buttonY, buttonWidth, buttonHeight, 10, TFT_NAVY);
+        M5.Display.setTextColor(TFT_WHITE);
+        M5.Display.setFont(&fonts::FreeSans12pt7b);
+        M5.Display.drawString(text, x + buttonWidth / 2, buttonY + buttonHeight / 2);
+    };
+    auto drawScreen = [&](bool failed) {
+        M5.Display.fillScreen(TFT_BLACK);
+        M5.Display.setTextSize(1);
+        M5.Display.setTextDatum(MC_DATUM);
+        M5.Display.setFont(&fonts::FreeSansBold18pt7b);
+        M5.Display.setTextColor(failed ? TFT_RED : TFT_YELLOW);
+        M5.Display.drawString(failed ? "WiFi connection failed" : "Connecting WiFi",
+                              M5.Display.width() / 2, M5.Display.height() / 2 - 70);
+        M5.Display.setFont(&fonts::FreeSans12pt7b);
+        M5.Display.setTextColor(TFT_WHITE);
+        M5.Display.drawString(activeProfile.ssid, M5.Display.width() / 2,
+                              M5.Display.height() / 2);
+        if (failed) drawButton(retryX, "Retry");
+        drawButton(chooseX, "Choose profile");
+    };
+
+    // A click needs a single-finger press and release in the same button.
+    // Multitouch or dragging outside the pressed button cancels the click.
+    int pressedButton = 0;
+    bool touchWasDown = false;
+    auto pollAction = [&]() {
+        M5.update();
+        if (cardkb_available) cardkb_getch();  // Discard local startup input.
+        // getCount() can include a released contact for one update frame.
+        // Counting only active contacts avoids losing that button release.
+        int count = 0;
+        auto touch = M5.Touch.getDetail();
+        for (uint8_t i = 0; i < M5.Touch.getCount(); ++i) {
+            auto detail = M5.Touch.getDetail(i);
+            if (detail.isPressed()) {
+                ++count;
+                touch = detail;
+            }
+        }
+        auto hit = [&](int x, int y) {
+            if (y < buttonY || y >= buttonY + buttonHeight) return 0;
+            if (x >= chooseX && x < chooseX + buttonWidth) return 2;
+            if (x >= retryX && x < retryX + buttonWidth) return 1;
+            return 0;
+        };
+        int result = 0;
+        if (count == 1 && touch.isPressed()) {
+            int current = hit(touch.x, touch.y);
+            if (!touchWasDown) pressedButton = current;
+            else if (current != pressedButton) pressedButton = 0;
+            touchWasDown = true;
+        } else if (count == 0) {
+            if (touchWasDown) result = pressedButton;
+            touchWasDown = false;
+            pressedButton = 0;
+        } else {
+            pressedButton = 0;
+            touchWasDown = true;
+        }
+        return result;
+    };
+
+    WiFi.mode(WIFI_STA);
+    // Credentials live in our own NVS records, not in another implicit WiFi
+    // persistence store. Do not erase the framework's NVS partition.
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(false);
+    while (true) {
+        wifiConnected = false;
+        pressedButton = 0;
+        touchWasDown = false;
+        drawScreen(false);
+        Serial.println("[WiFi] Connecting selected profile");
+        WiFi.begin(activeProfile.ssid, activeProfile.wifiPassword);
+        uint32_t started = millis();
+        bool cancelled = false;
+        while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
+            if (pollAction() == 2) {
+                cancelled = true;
+                break;
+            }
+            delay(10);
+        }
+        if (!cancelled && WiFi.status() == WL_CONNECTED) {
+            wifiConnected = true;
+            WiFi.setAutoReconnect(true);
+            Serial.println("[WiFi] Connected, local IP: " + WiFi.localIP().toString());
+            return true;
+        }
+        WiFi.disconnect(false, false);
+        if (cancelled) {
+            Serial.println("[WiFi] Connection cancelled; returning to profile selection");
+            return false;
+        }
+        Serial.println("[WiFi] Connection timed out");
+        // Consume a touch still held during the timeout before showing buttons.
+        M5.update();
+        while (M5.Touch.getCount() != 0) {
+            delay(10);
+            M5.update();
+        }
+        pressedButton = 0;
+        touchWasDown = false;
+        drawScreen(true);
+        int action = 0;
+        while (action == 0) {
+            action = pollAction();
+            delay(10);
+        }
+        if (action == 2) return false;
     }
 }
 
@@ -344,15 +498,16 @@ void setupWiFi() {
 
 void setupVNC() {
     Serial.println("Initializing VNC client...");
-    Serial.println("Server: " + String(VNC_HOST) + ":" + String(VNC_PORT));
+    Serial.println("Server: " + getVNCAddress());
+    displayStatus("Connecting VNC", getVNCAddress(), TFT_GREEN);
     
     // Create VNC client with display driver
     // Using new to allocate on heap instead of stack
     vnc = new arduinoVNC(vncDisplay);
     
     // Configure VNC connection
-    vnc->begin(VNC_HOST, VNC_PORT);
-    vnc->setPassword(VNC_PASSWORD);
+    vnc->begin(activeProfile.vncHost, activeProfile.vncPort);
+    vnc->setPassword(activeProfile.vncPassword);
     Serial.println("VNC client initialized");
 }
 
@@ -525,6 +680,7 @@ void showVNCScreen() {
 
 void displayConnectionInfo() {
     M5.Display.fillScreen(TFT_BLACK);
+    M5.Display.setTextSize(1);
     
     // Title bar - adjusted height and position
     M5.Display.fillRect(0, 0, M5.Display.width(), 70, TFT_NAVY);
@@ -532,9 +688,19 @@ void displayConnectionInfo() {
     M5.Display.setTextDatum(MC_DATUM);
     M5.Display.setFont(&fonts::FreeSansBold18pt7b);  // Smaller font for title
     M5.Display.drawString("Connection Info", M5.Display.width() / 2, 35);
+
+    M5.Display.setFont(&fonts::FreeSans12pt7b);
+    M5.Display.setTextColor(TFT_LIGHTGREY);
+    String profileName(activeProfile.name);
+    while (profileName.length() > 0 &&
+           M5.Display.textWidth(profileName + "...") > M5.Display.width() - 80) {
+        profileName.remove(profileName.length() - 1);
+    }
+    if (profileName != activeProfile.name) profileName += "...";
+    M5.Display.drawString(profileName, M5.Display.width() / 2, 96);
     
     // Content area - adjusted starting position and spacing
-    int y = 110;  // Start lower to avoid overlap with title
+    int y = 145;  // Leave room for the active profile name below the title
     int lineHeight = 90;  // Increased line height for better spacing
     
     M5.Display.setFont(&fonts::FreeSansBold12pt7b);  // Smaller font for labels
@@ -545,7 +711,7 @@ void displayConnectionInfo() {
     M5.Display.drawString("WiFi Network", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);  // Smaller font for values
-    M5.Display.drawString(String(WIFI_SSID), 40, y + 40);
+    M5.Display.drawString(String(activeProfile.ssid), 40, y + 40);
     
     y += lineHeight;
     
@@ -555,7 +721,12 @@ void displayConnectionInfo() {
     M5.Display.drawString("VNC Server", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);
-    M5.Display.drawString(String(VNC_HOST), 40, y + 40);
+    String host(activeProfile.vncHost);
+    while (host.length() > 0 && M5.Display.textWidth(host + "...") > M5.Display.width() - 80) {
+        host.remove(host.length() - 1);
+    }
+    if (host != activeProfile.vncHost) host += "...";
+    M5.Display.drawString(host, 40, y + 40);
     
     y += lineHeight;
     
@@ -565,7 +736,7 @@ void displayConnectionInfo() {
     M5.Display.drawString("Port", 40, y);
     M5.Display.setTextColor(TFT_WHITE);
     M5.Display.setFont(&fonts::FreeSans12pt7b);
-    M5.Display.drawString(String(VNC_PORT), 40, y + 40);
+    M5.Display.drawString(String(activeProfile.vncPort), 40, y + 40);
     
     // Status indicators - adjusted position
     y += lineHeight + 20;
@@ -818,5 +989,5 @@ void displayStatus(const String& title, const String& message, uint16_t color) {
 }
 
 String getVNCAddress() {
-    return String(VNC_HOST) + ":" + String(VNC_PORT);
+    return String(activeProfile.vncHost) + ":" + String(activeProfile.vncPort);
 }

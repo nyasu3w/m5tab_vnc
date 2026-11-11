@@ -125,6 +125,8 @@ void M5GFX_VNCDriver::printScreen(const String& title, const String& msg, uint16
     if (_isPaused) return;
     
     _gfx->fillScreen(TFT_BLACK);
+    _gfx->setFont(&fonts::Font0);
+    _gfx->setTextDatum(TL_DATUM);
     _gfx->setTextColor(color);
     _gfx->setTextSize(2);
     
